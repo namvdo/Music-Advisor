@@ -1,0 +1,634 @@
+type: edu
+custom_name: stage5
+files:
+- name: test/MusicAdvisorTest.java
+  visible: false
+  text: "import advisor.Main;\nimport org.hyperskill.hstest.dynamic.output.SystemOutHandler;\n\
+    import org.hyperskill.hstest.mocks.web.WebServerMock;\nimport org.hyperskill.hstest.stage.StageTest;\n\
+    import org.hyperskill.hstest.testcase.CheckResult;\nimport org.hyperskill.hstest.testcase.TestCase;\n\
+    \nimport java.net.URI;\nimport java.net.http.HttpClient;\nimport java.net.http.HttpRequest;\n\
+    import java.net.http.HttpResponse;\nimport java.net.http.HttpTimeoutException;\n\
+    import java.time.Duration;\nimport java.util.List;\n\nclass RedirectUriFinder\
+    \ {\n    \n    private Thread thread;\n    \n    volatile CheckResult checkResult\
+    \ = CheckResult.correct();\n    \n    private String fictiveAuthCode;\n    \n\
+    \    RedirectUriFinder(String fictiveAuthCode) {\n        this.fictiveAuthCode\
+    \ = fictiveAuthCode;\n    }\n    \n    void start() {\n        // this message\
+    \ will be ignored, if user program hangs\n        checkResult = CheckResult.wrong(\"\
+    Not found a link with redirect_uri.\");\n        thread = new Thread(() -> {\n\
+    \            String redirectUri = \"\";\n            long searchTime = System.currentTimeMillis();\n\
+    \            \n            while (!Thread.interrupted()) {\n                if\
+    \ (System.currentTimeMillis() - searchTime > 1000 * 9) {\n                   \
+    \ System.out.println(\"Tester: Not found a link with redirect_uri after 9 seconds.\
+    \ Stopping.\");\n                    return;\n                }\n            \
+    \    \n                String out = SystemOutHandler.getDynamicOutput();\n   \
+    \             if (out.contains(\"redirect_uri=\")) {\n                    redirectUri\
+    \ = out.split(\"redirect_uri=\")[1];\n                    if (redirectUri.contains(\"\
+    &\")) {\n                        redirectUri = redirectUri.split(\"&\")[0];\n\
+    \                    }\n                    if (redirectUri.contains(\"\\n\"))\
+    \ {\n                        // \\r \\n or \\r\\n\n                        redirectUri\
+    \ = redirectUri.split(\"\\\\R\")[0];\n                    }\n                \
+    \    break;\n                }\n                \n                try {\n    \
+    \                Thread.sleep(100);\n                } catch (Exception e) {\n\
+    \                    return;\n                }\n            }\n            try\
+    \ {\n                HttpClient client = HttpClient.newBuilder().build();\n  \
+    \              HttpRequest emptyRequest = HttpRequest.newBuilder()\n         \
+    \               .uri(URI.create(redirectUri))\n                        .timeout(Duration.ofMillis(500))\n\
+    \                        .GET()\n                        .build();\n         \
+    \       HttpRequest errorRequest = HttpRequest.newBuilder()\n                \
+    \        .uri(URI.create(redirectUri + \"?error=access_denied\"))\n          \
+    \              .timeout(Duration.ofMillis(500))\n                        .GET()\n\
+    \                        .build();\n                HttpRequest codeRequest =\
+    \ HttpRequest.newBuilder()\n                        .uri(URI.create(redirectUri\
+    \ + \"?code=\" + fictiveAuthCode))\n                        .timeout(Duration.ofMillis(500))\n\
+    \                        .GET()\n                        .build();\n         \
+    \       \n                checkResult = CheckResult.wrong(\"Making request to\
+    \ \" + redirectUri + \" was not finished.\");\n                System.out.println(\"\
+    Tester: making requests to redirect uri: \" + redirectUri);\n                HttpResponse<String>\
+    \ badResponse = client.send(emptyRequest, HttpResponse.BodyHandlers.ofString());\n\
+    \                System.out.println(\"Tester: done request 1: \" + badResponse.body());\n\
+    \                HttpResponse<String> badResponse2 = client.send(errorRequest,\
+    \ HttpResponse.BodyHandlers.ofString());\n                System.out.println(\"\
+    Tester: done request 2: \" + badResponse2.body());\n                HttpResponse<String>\
+    \ goodResponse = client.send(codeRequest, HttpResponse.BodyHandlers.ofString());\n\
+    \                System.out.println(\"Tester: done request 3: \" + goodResponse.body());\n\
+    \                \n                if (!badResponse.body().contains(\"Not found\
+    \ authorization code. Try again.\")\n                        || !badResponse2.body().contains(\"\
+    Not found authorization code. Try again.\")) {\n                    checkResult\
+    \ = CheckResult.wrong(\"You should send to the browser: `Not found authorization\
+    \ code. Try again.` \" +\n                            \"if there is no code.\"\
+    );\n                    return;\n                }\n                \n       \
+    \         if (!goodResponse.body().contains(\"Got the code. Return back to your\
+    \ program.\")) {\n                    checkResult = CheckResult.wrong(\"You should\
+    \ send `Got the code. Return back to your program.` \" +\n                   \
+    \         \"if the query contains the code.\");\n                    return;\n\
+    \                }\n                checkResult = CheckResult.correct();\n   \
+    \         } catch (HttpTimeoutException e) {\n                System.out.println(\"\
+    Tester: Timeout\");\n                // this checkResult will be ignored in most\
+    \ cases (if user program hangs)\n                checkResult = CheckResult.wrong(\"\
+    Not received any response from the server, found in redirect_uri: \"\n       \
+    \                 + redirectUri);\n            } catch (InterruptedException e)\
+    \ {\n                // when the user printed token, but not answered the last\
+    \ request with code.\n                checkResult = CheckResult.wrong(\"Request\
+    \ to \" + redirectUri + \" was interrupted. \" +\n                        \"Make\
+    \ sure, that you give the right feedback in your browser.\");\n            } catch\
+    \ (Exception e) {\n                System.out.println(\"Tester: Error: \" + e.getMessage());\n\
+    \                e.printStackTrace();\n            }\n        });\n        thread.start();\n\
+    \    }\n    \n    void stop() {\n        if (thread != null) {\n            thread.interrupt();\n\
+    \            try {\n                // wait the thread to set a proper checkResult\
+    \ in case of interruption.\n                thread.join();\n            } catch\
+    \ (InterruptedException ignored) {\n            }\n        }\n    }\n}\n\n\npublic\
+    \ class MusicAdvisorTest extends StageTest<Void> {\n    public MusicAdvisorTest()\
+    \ throws Exception {\n        super(Main.class);\n    }\n    \n    private int\
+    \ countAppearances(String str, String findStr) {\n        int lastIndex = 0;\n\
+    \        int count = 0;\n        \n        while (lastIndex != -1) {\n       \
+    \     lastIndex = str.indexOf(findStr, lastIndex);\n            if (lastIndex\
+    \ != -1) {\n                count++;\n                lastIndex += findStr.length();\n\
+    \            }\n        }\n        return count;\n    }\n    \n    private static\
+    \ final String fictiveAuthCode = \"123123\";\n    private static final String\
+    \ fictiveAccessToken = \"456456\";\n    private static final String fictiveRefreshToken\
+    \ = \"567567\";\n    \n    private String tokenResponse = \"{\" +\n          \
+    \  \"\\\"access_token\\\":\\\"\" + fictiveAccessToken + \"\\\",\" +\n        \
+    \    \"\\\"token_type\\\":\\\"Bearer\\\",\" +\n            \"\\\"expires_in\\\"\
+    :3600,\" +\n            \"\\\"refresh_token\\\":\" + \"\\\"\" + fictiveRefreshToken\
+    \ + \"\\\",\" +\n            \"\\\"scope\\\":\\\"\\\"\" +\n            \"}\";\n\
+    \    \n    private RedirectUriFinder redirectUriCatcher = new RedirectUriFinder(fictiveAuthCode);\n\
+    \    \n    private int accessServerPort = 45678;\n    private int resourceServerPort\
+    \ = 56789;\n    \n    private String accessServerUrl = \"http://127.0.0.1:\" +\
+    \ accessServerPort;\n    private String resourceServerUrl = \"http://127.0.0.1:\"\
+    \ + resourceServerPort;\n    private String spotifyServerUrl = \"https://api\\\
+    \\.spotify\\\\.com\";\n    \n    private String apiCategoriesResponse = \"{\\\
+    n\" +\n            \"    \\\"categories\\\": {\\n\" +\n            \"        \\\
+    \"href\\\": \\\"https://api.spotify.com/v1/browse/categories?offset=0&limit=20\\\
+    \",\\n\" +\n            \"        \\\"items\\\": [\\n\" +\n            \"    \
+    \        {\\n\" +\n            \"                \\\"href\\\": \\\"https://api.spotify.com/v1/browse/categories/toplists\\\
+    \",\\n\" +\n            \"                \\\"icons\\\": [\\n\" +\n          \
+    \  \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 275,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://datsnxq1rwndn.cloudfront.net/media/derived/toplists_11160599e6a04ac5d6f2757f5511778f_0_0_275_275.jpg\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 275\\n\" +\n\
+    \            \"                    }\\n\" +\n            \"                ],\\\
+    n\" +\n            \"                \\\"id\\\": \\\"toplists\\\",\\n\" +\n  \
+    \          \"                \\\"name\\\": \\\"Top Lists\\\"\\n\" +\n        \
+    \    \"            },\\n\" +\n            \"            {\\n\" +\n           \
+    \ \"                \\\"href\\\": \\\"https://api.spotify.com/v1/browse/categories/mood\\\
+    \",\\n\" +\n            \"                \\\"icons\\\": [\\n\" +\n          \
+    \  \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 274,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://datsnxq1rwndn.cloudfront.net/media/original/mood-274x274_976986a31ac8c49794cbdc7246fd5ad7_274x274.jpg\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 274\\n\" +\n\
+    \            \"                    }\\n\" +\n            \"                ],\\\
+    n\" +\n            \"                \\\"id\\\": \\\"mood\\\",\\n\" +\n      \
+    \      \"                \\\"name\\\": \\\"Super Mood\\\"\\n\" +\n           \
+    \ \"            },\\n\" +\n            \"            {\\n\" +\n            \"\
+    \                \\\"href\\\": \\\"https://api.spotify.com/v1/browse/categories/party\\\
+    \",\\n\" +\n            \"                \\\"icons\\\": [\\n\" +\n          \
+    \  \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 274,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://datsnxq1rwndn.cloudfront.net/media/derived/party-274x274_73d1907a7371c3bb96a288390a96ee27_0_0_274_274.jpg\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 274\\n\" +\n\
+    \            \"                    }\\n\" +\n            \"                ],\\\
+    n\" +\n            \"                \\\"id\\\": \\\"party\\\",\\n\" +\n     \
+    \       \"                \\\"name\\\": \\\"Party Time\\\"\\n\" +\n          \
+    \  \"            }\\n\" +\n            \"        ],\\n\" +\n            \"   \
+    \     \\\"limit\\\": 20,\\n\" +\n            \"        \\\"next\\\": null,\\n\"\
+    \ +\n            \"        \\\"offset\\\": 0,\\n\" +\n            \"        \\\
+    \"previous\\\": null,\\n\" +\n            \"        \\\"total\\\": 3\\n\" +\n\
+    \            \"    }\\n\" +\n            \"}\".replaceAll(spotifyServerUrl, resourceServerUrl);\n\
+    \    \n    \n    private String apiPlaylistsPartyResponse = \"{\\n\" +\n     \
+    \       \"    \\\"playlists\\\": {\\n\" +\n            \"        \\\"href\\\"\
+    : \\\"https://api.spotify.com/v1/browse/categories/party/playlists?offset=0&limit=20\\\
+    \",\\n\" +\n            \"        \\\"items\\\": [\\n\" +\n            \"    \
+    \        {\\n\" +\n            \"                \\\"collaborative\\\": false,\\\
+    n\" +\n            \"                \\\"external_urls\\\": {\\n\" +\n       \
+    \     \"                    \\\"spotify\\\": \\\"http://open.spotify.com/user/spotifybrazilian/playlist/4k7EZPI3uKMz4aRRrLVfen\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotifybrazilian/playlists/4k7EZPI3uKMz4aRRrLVfen\\\
+    \",\\n\" +\n            \"                \\\"id\\\": \\\"4k7EZPI3uKMz4aRRrLVfen\\\
+    \",\\n\" +\n            \"                \\\"images\\\": [\\n\" +\n         \
+    \   \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 300,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://i.scdn.co/image/bf6544c213532e9650088dfef76c8521093d970e\\\",\\n\" +\n\
+    \            \"                        \\\"width\\\": 300\\n\" +\n           \
+    \ \"                    }\\n\" +\n            \"                ],\\n\" +\n  \
+    \          \"                \\\"name\\\": \\\"Noite Eletronica\\\",\\n\" +\n\
+    \            \"                \\\"owner\\\": {\\n\" +\n            \"       \
+    \             \\\"external_urls\\\": {\\n\" +\n            \"                \
+    \        \\\"spotify\\\": \\\"http://open.spotify.com/user/spotifybrazilian\\\"\
+    \\n\" +\n            \"                    },\\n\" +\n            \"         \
+    \           \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotifybrazilian\\\
+    \",\\n\" +\n            \"                    \\\"id\\\": \\\"spotifybrazilian\\\
+    \",\\n\" +\n            \"                    \\\"type\\\": \\\"user\\\",\\n\"\
+    \ +\n            \"                    \\\"uri\\\": \\\"spotify:user:spotifybrazilian\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"public\\\": null,\\n\" +\n            \"                \\\"snapshot_id\\\
+    \": \\\"PULvu1V2Ps8lzCxNXfNZTw4QbhBpaV0ZORc03Mw6oj6kQw9Ks2REwhL5Xcw/74wL\\\",\\\
+    n\" +\n            \"                \\\"tracks\\\": {\\n\" +\n            \"\
+    \                    \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotifybrazilian/playlists/4k7EZPI3uKMz4aRRrLVfen/tracks\\\
+    \",\\n\" +\n            \"                    \\\"total\\\": 100\\n\" +\n    \
+    \        \"                },\\n\" +\n            \"                \\\"type\\\
+    \": \\\"playlist\\\",\\n\" +\n            \"                \\\"uri\\\": \\\"\
+    spotify:user:spotifybrazilian:playlist:4k7EZPI3uKMz4aRRrLVfen\\\"\\n\" +\n   \
+    \         \"            },\\n\" +\n            \"            {\\n\" +\n      \
+    \      \"                \\\"collaborative\\\": false,\\n\" +\n            \"\
+    \                \\\"external_urls\\\": {\\n\" +\n            \"             \
+    \       \\\"spotify\\\": \\\"http://open.spotify.com/user/spotifybrazilian/playlist/4HZh0C9y80GzHDbHZyX770\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotifybrazilian/playlists/4HZh0C9y80GzHDbHZyX770\\\
+    \",\\n\" +\n            \"                \\\"id\\\": \\\"4HZh0C9y80GzHDbHZyX770\\\
+    \",\\n\" +\n            \"                \\\"images\\\": [\\n\" +\n         \
+    \   \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 300,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://i.scdn.co/image/be6c333146674440123073cb32c1c8b851e69023\\\",\\n\" +\n\
+    \            \"                        \\\"width\\\": 300\\n\" +\n           \
+    \ \"                    }\\n\" +\n            \"                ],\\n\" +\n  \
+    \          \"                \\\"name\\\": \\\"Festa Indie\\\",\\n\" +\n     \
+    \       \"                \\\"owner\\\": {\\n\" +\n            \"            \
+    \        \\\"external_urls\\\": {\\n\" +\n            \"                     \
+    \   \\\"spotify\\\": \\\"http://open.spotify.com/user/spotifybrazilian\\\"\\n\"\
+    \ +\n            \"                    },\\n\" +\n            \"             \
+    \       \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotifybrazilian\\\"\
+    ,\\n\" +\n            \"                    \\\"id\\\": \\\"spotifybrazilian\\\
+    \",\\n\" +\n            \"                    \\\"type\\\": \\\"user\\\",\\n\"\
+    \ +\n            \"                    \\\"uri\\\": \\\"spotify:user:spotifybrazilian\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"public\\\": null,\\n\" +\n            \"                \\\"snapshot_id\\\
+    \": \\\"V66hh9k2HnLCdzHvtoXPv+tm0jp3ODM63SZ0oISfGnlHQxwG/scupDbKgIo99Zfz\\\",\\\
+    n\" +\n            \"                \\\"tracks\\\": {\\n\" +\n            \"\
+    \                    \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotifybrazilian/playlists/4HZh0C9y80GzHDbHZyX770/tracks\\\
+    \",\\n\" +\n            \"                    \\\"total\\\": 74\\n\" +\n     \
+    \       \"                },\\n\" +\n            \"                \\\"type\\\"\
+    : \\\"playlist\\\",\\n\" +\n            \"                \\\"uri\\\": \\\"spotify:user:spotifybrazilian:playlist:4HZh0C9y80GzHDbHZyX770\\\
+    \"\\n\" +\n            \"            }\\n\" +\n            \"        ],\\n\" +\n\
+    \            \"        \\\"limit\\\": 20,\\n\" +\n            \"        \\\"next\\\
+    \": null,\\n\" +\n            \"        \\\"offset\\\": 0,\\n\" +\n          \
+    \  \"        \\\"previous\\\": null,\\n\" +\n            \"        \\\"total\\\
+    \": 2\\n\" +\n            \"    }\\n\" +\n            \"}\".replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n    \n    \n    private String apiNewReleasesResponse =\
+    \ \"{\\n\" +\n            \"    \\\"albums\\\": {\\n\" +\n            \"     \
+    \   \\\"href\\\": \\\"https://api.spotify.com/v1/browse/new-releases?offset=0&limit=20\\\
+    \",\\n\" +\n            \"        \\\"items\\\": [\\n\" +\n            \"    \
+    \        {\\n\" +\n            \"                \\\"album_type\\\": \\\"single\\\
+    \",\\n\" +\n            \"                \\\"artists\\\": [\\n\" +\n        \
+    \    \"                    {\\n\" +\n            \"                        \\\"\
+    external_urls\\\": {\\n\" +\n            \"                            \\\"spotify\\\
+    \": \\\"https://open.spotify.com/artist/2RdwBSPQiwcmiDo9kixcl8\\\"\\n\" +\n  \
+    \          \"                        },\\n\" +\n            \"               \
+    \         \\\"href\\\": \\\"https://api.spotify.com/v1/artists/2RdwBSPQiwcmiDo9kixcl8\\\
+    \",\\n\" +\n            \"                        \\\"id\\\": \\\"2RdwBSPQiwcmiDo9kixcl8\\\
+    \",\\n\" +\n            \"                        \\\"name\\\": \\\"Pharrell Williams\\\
+    \",\\n\" +\n            \"                        \\\"type\\\": \\\"artist\\\"\
+    ,\\n\" +\n            \"                        \\\"uri\\\": \\\"spotify:artist:2RdwBSPQiwcmiDo9kixcl8\\\
+    \"\\n\" +\n            \"                    }\\n\" +\n            \"        \
+    \        ],\\n\" +\n            \"                \\\"available_markets\\\": [\\\
+    n\" +\n            \"                    \\\"AD\\\"\\n\" +\n            \"   \
+    \             ],\\n\" +\n            \"                \\\"external_urls\\\":\
+    \ {\\n\" +\n            \"                    \\\"spotify\\\": \\\"https://open.spotify.com/album/5ZX4m5aVSmWQ5iHAPQpT71\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"href\\\": \\\"https://api.spotify.com/v1/albums/5ZX4m5aVSmWQ5iHAPQpT71\\\
+    \",\\n\" +\n            \"                \\\"id\\\": \\\"5ZX4m5aVSmWQ5iHAPQpT71\\\
+    \",\\n\" +\n            \"                \\\"images\\\": [\\n\" +\n         \
+    \   \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 640,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://i.scdn.co/image/e6b635ebe3ef4ba22492f5698a7b5d417f78b88a\\\",\\n\" +\n\
+    \            \"                        \\\"width\\\": 640\\n\" +\n           \
+    \ \"                    },\\n\" +\n            \"                    {\\n\" +\n\
+    \            \"                        \\\"height\\\": 300,\\n\" +\n         \
+    \   \"                        \\\"url\\\": \\\"https://i.scdn.co/image/92ae5b0fe64870c09004dd2e745a4fb1bf7de39d\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 300\\n\" +\n\
+    \            \"                    },\\n\" +\n            \"                 \
+    \   {\\n\" +\n            \"                        \\\"height\\\": 64,\\n\" +\n\
+    \            \"                        \\\"url\\\": \\\"https://i.scdn.co/image/8a7ab6fc2c9f678308ba0f694ecd5718dc6bc930\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 64\\n\" +\n \
+    \           \"                    }\\n\" +\n            \"                ],\\\
+    n\" +\n            \"                \\\"name\\\": \\\"Runnin'\\\",\\n\" +\n \
+    \           \"                \\\"type\\\": \\\"album\\\",\\n\" +\n          \
+    \  \"                \\\"uri\\\": \\\"spotify:album:5ZX4m5aVSmWQ5iHAPQpT71\\\"\
+    \\n\" +\n            \"            },\\n\" +\n            \"            {\\n\"\
+    \ +\n            \"                \\\"album_type\\\": \\\"single\\\",\\n\" +\n\
+    \            \"                \\\"artists\\\": [\\n\" +\n            \"     \
+    \               {\\n\" +\n            \"                        \\\"external_urls\\\
+    \": {\\n\" +\n            \"                            \\\"spotify\\\": \\\"\
+    https://open.spotify.com/artist/3TVXtAsR1Inumwj472S9r4\\\"\\n\" +\n          \
+    \  \"                        },\\n\" +\n            \"                       \
+    \ \\\"href\\\": \\\"https://api.spotify.com/v1/artists/3TVXtAsR1Inumwj472S9r4\\\
+    \",\\n\" +\n            \"                        \\\"id\\\": \\\"3TVXtAsR1Inumwj472S9r4\\\
+    \",\\n\" +\n            \"                        \\\"name\\\": \\\"Drake2\\\"\
+    ,\\n\" +\n            \"                        \\\"type\\\": \\\"artist\\\",\\\
+    n\" +\n            \"                        \\\"uri\\\": \\\"spotify:artist:3TVXtAsR1Inumwj472S9r4\\\
+    \"\\n\" +\n            \"                    }\\n\" +\n            \"        \
+    \        ],\\n\" +\n            \"                \\\"available_markets\\\": [\\\
+    n\" +\n            \"                    \\\"AD\\\"\\n\" +\n            \"   \
+    \             ],\\n\" +\n            \"                \\\"external_urls\\\":\
+    \ {\\n\" +\n            \"                    \\\"spotify\\\": \\\"https://open.spotify.com/album/0geTzdk2InlqIoB16fW9Nd\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"href\\\": \\\"https://api.spotify.com/v1/albums/0geTzdk2InlqIoB16fW9Nd\\\
+    \",\\n\" +\n            \"                \\\"id\\\": \\\"0geTzdk2InlqIoB16fW9Nd\\\
+    \",\\n\" +\n            \"                \\\"images\\\": [\\n\" +\n         \
+    \   \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 640,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://i.scdn.co/image/d40e9c3d22bde2fbdb2ecc03cccd7a0e77f42e4c\\\",\\n\" +\n\
+    \            \"                        \\\"width\\\": 640\\n\" +\n           \
+    \ \"                    },\\n\" +\n            \"                    {\\n\" +\n\
+    \            \"                        \\\"height\\\": 300,\\n\" +\n         \
+    \   \"                        \\\"url\\\": \\\"https://i.scdn.co/image/dff06a3375f6d9b32ecb081eb9a60bbafecb5731\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 300\\n\" +\n\
+    \            \"                    },\\n\" +\n            \"                 \
+    \   {\\n\" +\n            \"                        \\\"height\\\": 64,\\n\" +\n\
+    \            \"                        \\\"url\\\": \\\"https://i.scdn.co/image/808a02bd7fc59b0652c9df9f68675edbffe07a79\\\
+    \",\\n\" +\n            \"                        \\\"width\\\": 64\\n\" +\n \
+    \           \"                    }\\n\" +\n            \"                ],\\\
+    n\" +\n            \"                \\\"name\\\": \\\"Sneakin'\\\",\\n\" +\n\
+    \            \"                \\\"type\\\": \\\"album\\\",\\n\" +\n         \
+    \   \"                \\\"uri\\\": \\\"spotify:album:0geTzdk2InlqIoB16fW9Nd\\\"\
+    \\n\" +\n            \"            }\\n\" +\n            \"        ],\\n\" +\n\
+    \            \"        \\\"limit\\\": 20,\\n\" +\n            \"        \\\"next\\\
+    \": null,\\n\" +\n            \"        \\\"offset\\\": 0,\\n\" +\n          \
+    \  \"        \\\"previous\\\": null,\\n\" +\n            \"        \\\"total\\\
+    \": 2\\n\" +\n            \"    }\\n\" +\n            \"}\".replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n    \n    \n    private String apiFeaturedPlaylistsResponse\
+    \ = \"{\\n\" +\n            \"    \\\"message\\\": \\\"Monday morning music, coming\
+    \ right up!\\\",\\n\" +\n            \"    \\\"playlists\\\": {\\n\" +\n     \
+    \       \"        \\\"href\\\": \\\"https://api.spotify.com/v1/browse/featured-playlists?offset=0&limit=20\\\
+    \",\\n\" +\n            \"        \\\"items\\\": [\\n\" +\n            \"    \
+    \        {\\n\" +\n            \"                \\\"collaborative\\\": false,\\\
+    n\" +\n            \"                \\\"external_urls\\\": {\\n\" +\n       \
+    \     \"                    \\\"spotify\\\": \\\"http://open.spotify.com/user/spotify/playlist/6ftJBzU2LLQcaKefMi7ee7\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotify/playlists/6ftJBzU2LLQcaKefMi7ee7\\\
+    \",\\n\" +\n            \"                \\\"id\\\": \\\"6ftJBzU2LLQcaKefMi7ee7\\\
+    \",\\n\" +\n            \"                \\\"images\\\": [\\n\" +\n         \
+    \   \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 300,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://i.scdn.co/image/7bd33c65ebd1e45975bbcbbf513bafe272f033c7\\\",\\n\" +\n\
+    \            \"                        \\\"width\\\": 300\\n\" +\n           \
+    \ \"                    }\\n\" +\n            \"                ],\\n\" +\n  \
+    \          \"                \\\"name\\\": \\\"Monday Morning Mood\\\",\\n\" +\n\
+    \            \"                \\\"owner\\\": {\\n\" +\n            \"       \
+    \             \\\"external_urls\\\": {\\n\" +\n            \"                \
+    \        \\\"spotify\\\": \\\"http://open.spotify.com/user/spotify\\\"\\n\" +\n\
+    \            \"                    },\\n\" +\n            \"                 \
+    \   \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotify\\\",\\n\" +\n \
+    \           \"                    \\\"id\\\": \\\"spotify\\\",\\n\" +\n      \
+    \      \"                    \\\"type\\\": \\\"user\\\",\\n\" +\n            \"\
+    \                    \\\"uri\\\": \\\"spotify:user:spotify\\\"\\n\" +\n      \
+    \      \"                },\\n\" +\n            \"                \\\"public\\\
+    \": null,\\n\" +\n            \"                \\\"snapshot_id\\\": \\\"WwGvSIVUkUvGvqjgj/bQHlRycYmJ2TkoIxYfoalWlmIZT6TvsgvGMgtQ2dGbkrAW\\\
+    \",\\n\" +\n            \"                \\\"tracks\\\": {\\n\" +\n         \
+    \   \"                    \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotify/playlists/6ftJBzU2LLQcaKefMi7ee7/tracks\\\
+    \",\\n\" +\n            \"                    \\\"total\\\": 245\\n\" +\n    \
+    \        \"                },\\n\" +\n            \"                \\\"type\\\
+    \": \\\"playlist\\\",\\n\" +\n            \"                \\\"uri\\\": \\\"\
+    spotify:user:spotify:playlist:6ftJBzU2LLQcaKefMi7ee7\\\"\\n\" +\n            \"\
+    \            },\\n\" +\n            \"            {\\n\" +\n            \"   \
+    \             \\\"collaborative\\\": false,\\n\" +\n            \"           \
+    \     \\\"external_urls\\\": {\\n\" +\n            \"                    \\\"\
+    spotify\\\": \\\"http://open.spotify.com/user/spotify__sverige/playlist/4uOEx4OUrkoGNZoIlWMUbO\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotify__sverige/playlists/4uOEx4OUrkoGNZoIlWMUbO\\\
+    \",\\n\" +\n            \"                \\\"id\\\": \\\"4uOEx4OUrkoGNZoIlWMUbO\\\
+    \",\\n\" +\n            \"                \\\"images\\\": [\\n\" +\n         \
+    \   \"                    {\\n\" +\n            \"                        \\\"\
+    height\\\": 300,\\n\" +\n            \"                        \\\"url\\\": \\\
+    \"https://i.scdn.co/image/24aa1d1b491dd529b9c03392f350740ed73438d8\\\",\\n\" +\n\
+    \            \"                        \\\"width\\\": 300\\n\" +\n           \
+    \ \"                    }\\n\" +\n            \"                ],\\n\" +\n  \
+    \          \"                \\\"name\\\": \\\"Upp och hoppa!\\\",\\n\" +\n  \
+    \          \"                \\\"owner\\\": {\\n\" +\n            \"         \
+    \           \\\"external_urls\\\": {\\n\" +\n            \"                  \
+    \      \\\"spotify\\\": \\\"http://open.spotify.com/user/spotify__sverige\\\"\\\
+    n\" +\n            \"                    },\\n\" +\n            \"           \
+    \         \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotify__sverige\\\
+    \",\\n\" +\n            \"                    \\\"id\\\": \\\"spotify__sverige\\\
+    \",\\n\" +\n            \"                    \\\"type\\\": \\\"user\\\",\\n\"\
+    \ +\n            \"                    \\\"uri\\\": \\\"spotify:user:spotify__sverige\\\
+    \"\\n\" +\n            \"                },\\n\" +\n            \"           \
+    \     \\\"public\\\": null,\\n\" +\n            \"                \\\"snapshot_id\\\
+    \": \\\"0j9Rcbt2KtCXEXKtKy/tnSL5r4byjDBOIVY1dn4S6GV73EEUgNuK2hU+QyDuNnXz\\\",\\\
+    n\" +\n            \"                \\\"tracks\\\": {\\n\" +\n            \"\
+    \                    \\\"href\\\": \\\"https://api.spotify.com/v1/users/spotify__sverige/playlists/4uOEx4OUrkoGNZoIlWMUbO/tracks\\\
+    \",\\n\" +\n            \"                    \\\"total\\\": 38\\n\" +\n     \
+    \       \"                },\\n\" +\n            \"                \\\"type\\\"\
+    : \\\"playlist\\\",\\n\" +\n            \"                \\\"uri\\\": \\\"spotify:user:spotify__sverige:playlist:4uOEx4OUrkoGNZoIlWMUbO\\\
+    \"\\n\" +\n            \"            }\\n\" +\n            \"        ],\\n\" +\n\
+    \            \"        \\\"limit\\\": 20,\\n\" +\n            \"        \\\"next\\\
+    \": null,\\n\" +\n            \"        \\\"offset\\\": 0,\\n\" +\n          \
+    \  \"        \\\"previous\\\": null,\\n\" +\n            \"        \\\"total\\\
+    \": 2\\n\" +\n            \"    }\\n\" +\n            \"}\".replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n    \n    \n    private String[] arguments = new String[]{\n\
+    \            \"-access\",\n            accessServerUrl,\n            \"-resource\"\
+    ,\n            resourceServerUrl,\n            \"-page\",\n            \"1\"\n\
+    \    };\n    \n    private WebServerMock accessServer = new WebServerMock(accessServerPort)\n\
+    \            .setPage(\"/api/token\", tokenResponse);\n    \n    private WebServerMock\
+    \ resourceServer = new WebServerMock(resourceServerPort)\n            .setPage(\"\
+    /v1/browse/categories\", apiCategoriesResponse)\n            .setPage(\"/v1/browse/categories/party/playlists\"\
+    , apiPlaylistsPartyResponse)\n            .setPage(\"/v1/browse/new-releases\"\
+    , apiNewReleasesResponse)\n            .setPage(\"/v1/browse/featured-playlists\"\
+    , apiFeaturedPlaylistsResponse);\n    \n    private TestCase<Void> authTestCase(String\
+    \ whatNext) {\n        return new TestCase<Void>()\n                .addArguments(arguments)\n\
+    \                .runWith(accessServer)\n                .runWith(resourceServer)\n\
+    \                .addInput(out -> {\n                    redirectUriCatcher.start();\n\
+    \                    return \"auth\\n\";\n                })\n               \
+    \ .addInput(out -> {\n                    redirectUriCatcher.stop();\n       \
+    \             if (redirectUriCatcher.checkResult != CheckResult.correct()) {\n\
+    \                        return redirectUriCatcher.checkResult;\n            \
+    \        }\n                    return whatNext;\n                });\n    }\n\
+    \    \n    private CheckResult checkAlbum1(String reply) {\n        String album1\
+    \ =\n                \"Runnin'\\n\" +\n                        \"[Pharrell Williams]\\\
+    n\" +\n                        \"https://open.spotify.com/album/5ZX4m5aVSmWQ5iHAPQpT71\"\
+    \n                                .replaceAll(spotifyServerUrl, resourceServerUrl);\n\
+    \        String album2 =\n                \"Sneakin'\\n\" +\n                \
+    \        \"[Drake2]\\n\" +\n                        \"https://open.spotify.com/album/0geTzdk2InlqIoB16fW9Nd\"\
+    \n                                .replaceAll(spotifyServerUrl, resourceServerUrl);\n\
+    \    \n        if (!reply.contains(album1)) {\n            return new CheckResult(false,\n\
+    \                    \"Album from page 1 not appeared on \\\"new\\\" action\"\
+    );\n        }\n        if (reply.contains(album2)) {\n            return new CheckResult(false,\n\
+    \                    \"Album from page 2 appeared on page 1 on \\\"new\\\" action\"\
+    );\n        }\n        if (!reply.contains(\"---PAGE 1 OF 2---\")) {\n       \
+    \     return new CheckResult(false,\n                    \"Something wrong with\
+    \ pagination format. Not found ---PAGE 1 OF 2---\");\n        }\n        return\
+    \ CheckResult.correct();\n    }\n    \n    private CheckResult checkAlbum2(String\
+    \ reply) {\n        String album1 =\n                \"Runnin'\\n\" +\n      \
+    \                  \"[Pharrell Williams]\\n\" +\n                        \"https://open.spotify.com/album/5ZX4m5aVSmWQ5iHAPQpT71\"\
+    \n                                .replaceAll(spotifyServerUrl, resourceServerUrl);\n\
+    \        String album2 =\n                \"Sneakin'\\n\" +\n                \
+    \        \"[Drake2]\\n\" +\n                        \"https://open.spotify.com/album/0geTzdk2InlqIoB16fW9Nd\"\
+    \n                                .replaceAll(spotifyServerUrl, resourceServerUrl);\n\
+    \    \n        if (!reply.contains(album2)) {\n            return new CheckResult(false,\n\
+    \                    \"Album from page 2 not appeared on \\\"new\\\" action\"\
+    );\n        }\n        if (reply.contains(album1)) {\n            return new CheckResult(false,\n\
+    \                    \"Album from page 1 appeared on page 2 on \\\"new\\\" action\"\
+    );\n        }\n        \n        if (!reply.contains(\"---PAGE 2 OF 2---\")) {\n\
+    \            return new CheckResult(false,\n                    \"Something wrong\
+    \ with pagination format. Not found ---PAGE 2 OF 2---\");\n        }\n       \
+    \ \n        return CheckResult.correct();\n    }\n    \n    @Override\n    public\
+    \ List<TestCase<Void>> generate() {\n        return List.of(\n               \
+    \ authTestCase(\"exit\"),\n                \n                authTestCase(\"new\"\
+    )\n                        .addInput(reply -> {\n                            CheckResult\
+    \ res = checkAlbum1(reply);\n                            if  (res != CheckResult.correct())\
+    \ {\n                                return res;\n                           \
+    \ }\n                            return \"prev\";\n                        })\n\
+    \                        .addInput(reply -> {\n                            if\
+    \ (!reply.contains(\"No more pages\")) {\n                                return\
+    \ CheckResult.wrong(\"Your output should be `No more pages` on -1 page.\");\n\
+    \                            }\n                            return \"next\";\n\
+    \                        })\n                        .addInput(reply -> {\n  \
+    \                          CheckResult res = checkAlbum2(reply);\n           \
+    \                 if  (res != CheckResult.correct()) {\n                     \
+    \           return res;\n                            }\n                     \
+    \       return \"next\";\n                        })\n                       \
+    \ .addInput(reply -> {\n                            if (!reply.contains(\"No more\
+    \ pages\")) {\n                                return CheckResult.wrong(\"Your\
+    \ output should be `No more pages` after the last page.\");\n                \
+    \            }\n                            return \"prev\";\n               \
+    \         })\n                        .addInput(reply -> {\n                 \
+    \           CheckResult res = checkAlbum1(reply);\n                          \
+    \  if  (res != CheckResult.correct()) {\n                                return\
+    \ res;\n                            }\n                            return \"exit\"\
+    ;\n                        }),\n                \n                \n         \
+    \       authTestCase(\"categories\\nexit\")\n                        .setCheckFunc((reply,\
+    \ v) -> {\n                            \n                            String category1\
+    \ = \"Top Lists\";\n                            String category2 = \"Super Mood\"\
+    ;\n                            String category3 = \"Party Time\";\n          \
+    \                  \n                            if (countAppearances(reply, category1)\
+    \ != 1\n                                    || countAppearances(reply, category2)\
+    \ != 0\n                                    || countAppearances(reply, category3)\
+    \ != 0) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing categories and pages\");\n                            }\n\
+    \                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"categories\\\
+    nnext\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n     \
+    \                       \n                            String category1 = \"Top\
+    \ Lists\";\n                            String category2 = \"Super Mood\";\n \
+    \                           String category3 = \"Party Time\";\n             \
+    \               \n                            if (countAppearances(reply, category1)\
+    \ != 1\n                                    || countAppearances(reply, category2)\
+    \ != 1\n                                    || countAppearances(reply, category3)\
+    \ != 0) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing categories and pages\");\n                            }\n\
+    \                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"categories\\\
+    nnext\\nnext\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n\
+    \                            \n                            String category1 =\
+    \ \"Top Lists\";\n                            String category2 = \"Super Mood\"\
+    ;\n                            String category3 = \"Party Time\";\n          \
+    \                  \n                            if (countAppearances(reply, category1)\
+    \ != 1\n                                    || countAppearances(reply, category2)\
+    \ != 1\n                                    || countAppearances(reply, category3)\
+    \ != 1) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing categories and pages\");\n                            }\n\
+    \                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"categories\\\
+    nnext\\nnext\\nprev\\nexit\")\n                        .setCheckFunc((reply, v)\
+    \ -> {\n                            \n                            String category1\
+    \ = \"Top Lists\";\n                            String category2 = \"Super Mood\"\
+    ;\n                            String category3 = \"Party Time\";\n          \
+    \                  \n                            if (countAppearances(reply, category1)\
+    \ != 1\n                                    || countAppearances(reply, category2)\
+    \ != 2\n                                    || countAppearances(reply, category3)\
+    \ != 1) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing categories and pages\");\n                            }\n\
+    \                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"categories\\\
+    nnext\\nnext\\nprev\\nprev\\nexit\")\n                        .setCheckFunc((reply,\
+    \ v) -> {\n                            \n                            String category1\
+    \ = \"Top Lists\";\n                            String category2 = \"Super Mood\"\
+    ;\n                            String category3 = \"Party Time\";\n          \
+    \                  \n                            if (countAppearances(reply, category1)\
+    \ != 2\n                                    || countAppearances(reply, category2)\
+    \ != 2\n                                    || countAppearances(reply, category3)\
+    \ != 1) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing categories and pages\");\n                            }\n\
+    \                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"featured\\\
+    nexit\")\n                        .setCheckFunc((reply, v) -> {\n            \
+    \                \n                            String featured1 =\n          \
+    \                          \"Monday Morning Mood\\n\" +\n                    \
+    \                        \"http://open.spotify.com/user/spotify/playlist/6ftJBzU2LLQcaKefMi7ee7\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    String featured2 =\n                                    \"Upp och hoppa!\\\
+    n\" +\n                                            \"http://open.spotify.com/user/spotify__sverige/playlist/4uOEx4OUrkoGNZoIlWMUbO\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    \n                            if (countAppearances(reply, featured1) != 1\n\
+    \                                    || countAppearances(reply, featured2) !=\
+    \ 0) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing featured playlists and pages\");\n                      \
+    \      }\n                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"featured\\\
+    nnext\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n     \
+    \                       \n                            String featured1 =\n   \
+    \                                 \"Monday Morning Mood\\n\" +\n             \
+    \                               \"http://open.spotify.com/user/spotify/playlist/6ftJBzU2LLQcaKefMi7ee7\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    String featured2 =\n                                    \"Upp och hoppa!\\\
+    n\" +\n                                            \"http://open.spotify.com/user/spotify__sverige/playlist/4uOEx4OUrkoGNZoIlWMUbO\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    \n                            if (countAppearances(reply, featured1) != 1\n\
+    \                                    || countAppearances(reply, featured2) !=\
+    \ 1) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing featured playlists and pages\");\n                      \
+    \      }\n                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"featured\\\
+    nnext\\nprev\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n\
+    \                            \n                            String featured1 =\n\
+    \                                    \"Monday Morning Mood\\n\" +\n          \
+    \                                  \"http://open.spotify.com/user/spotify/playlist/6ftJBzU2LLQcaKefMi7ee7\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    String featured2 =\n                                    \"Upp och hoppa!\\\
+    n\" +\n                                            \"http://open.spotify.com/user/spotify__sverige/playlist/4uOEx4OUrkoGNZoIlWMUbO\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    \n                            if (countAppearances(reply, featured1) != 2\n\
+    \                                    || countAppearances(reply, featured2) !=\
+    \ 1) {\n                                \n                                return\
+    \ new CheckResult(false,\n                                        \"Something\
+    \ wrong with showing featured playlists and pages\");\n                      \
+    \      }\n                            \n                            return CheckResult.correct();\n\
+    \                        }),\n        \n                authTestCase(\"playlists\
+    \ Party Time\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n\
+    \                            \n                            String playlist1 =\n\
+    \                                    \"Noite Eletronica\\n\" +\n             \
+    \                               \"http://open.spotify.com/user/spotifybrazilian/playlist/4k7EZPI3uKMz4aRRrLVfen\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    String playlist2 =\n                                    \"Festa Indie\\n\"\
+    \ +\n                                            \"http://open.spotify.com/user/spotifybrazilian/playlist/4HZh0C9y80GzHDbHZyX770\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    if (countAppearances(reply, playlist1) != 1\n                           \
+    \         || countAppearances(reply, playlist2) != 0) {\n                    \
+    \            \n                                return new CheckResult(false,\n\
+    \                                        \"Something wrong with showing playlists\
+    \ and pages\");\n                            }\n                            \n\
+    \                            return CheckResult.correct();\n                 \
+    \       }),\n        \n                authTestCase(\"playlists Party Time\\nnext\\\
+    nexit\")\n                        .setCheckFunc((reply, v) -> {\n            \
+    \                \n                            String playlist1 =\n          \
+    \                          \"Noite Eletronica\\n\" +\n                       \
+    \                     \"http://open.spotify.com/user/spotifybrazilian/playlist/4k7EZPI3uKMz4aRRrLVfen\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    String playlist2 =\n                                    \"Festa Indie\\n\"\
+    \ +\n                                            \"http://open.spotify.com/user/spotifybrazilian/playlist/4HZh0C9y80GzHDbHZyX770\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    if (countAppearances(reply, playlist1) != 1\n                           \
+    \         || countAppearances(reply, playlist2) != 1) {\n                    \
+    \            \n                                return new CheckResult(false,\n\
+    \                                        \"Something wrong with showing playlists\
+    \ and pages\");\n                            }\n                            \n\
+    \                            return CheckResult.correct();\n                 \
+    \       }),\n        \n                authTestCase(\"playlists Party Time\\nnext\\\
+    nprev\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n     \
+    \                       \n                            String playlist1 =\n   \
+    \                                 \"Noite Eletronica\\n\" +\n                \
+    \                            \"http://open.spotify.com/user/spotifybrazilian/playlist/4k7EZPI3uKMz4aRRrLVfen\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    String playlist2 =\n                                    \"Festa Indie\\n\"\
+    \ +\n                                            \"http://open.spotify.com/user/spotifybrazilian/playlist/4HZh0C9y80GzHDbHZyX770\"\
+    \n                                                    .replaceAll(spotifyServerUrl,\
+    \ resourceServerUrl);\n                            \n                        \
+    \    if (countAppearances(reply, playlist1) != 2\n                           \
+    \         || countAppearances(reply, playlist2) != 1) {\n                    \
+    \            \n                                return new CheckResult(false,\n\
+    \                                        \"Something wrong with showing playlists\
+    \ and pages\");\n                            }\n                            \n\
+    \                            return CheckResult.correct();\n                 \
+    \       })\n        );\n    }\n    \n    @Override\n    public CheckResult check(String\
+    \ reply, Void clue) {\n        return CheckResult.correct();\n    }\n}\n\n"
+  learner_created: false
+- name: src/advisor/Main.java
+  visible: true
+  text: |
+    package advisor;
+
+    public class Main {
+        public static void main(String[] args) {
+            System.out.println("Hello World!");
+        }
+    }
+  learner_created: false
+- name: build.gradle
+  visible: true
+  text: |-
+    apply plugin: 'java'
+    apply plugin: 'application'
+
+    group 'advisor'
+    version '1.0-SNAPSHOT'
+
+    sourceCompatibility = 11
+    mainClassName = 'advisor.Main'
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        compile 'com.google.code.gson:gson:+'
+    }
+
+    jar {
+        manifest {
+            attributes 'Main-Class' : 'advisor.Main'
+        }
+        from {
+            configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+        }
+    }
+  learner_created: false
+feedback_link: https://hyperskill.org/projects/62/stages/339/implement
+status: Solved
+record: 5

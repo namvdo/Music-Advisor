@@ -1,0 +1,175 @@
+type: edu
+custom_name: stage3
+files:
+- name: test/MusicAdvisorTest.java
+  visible: false
+  text: "import advisor.Main;\n\nimport org.hyperskill.hstest.dynamic.output.SystemOutHandler;\n\
+    import org.hyperskill.hstest.mocks.web.WebServerMock;\nimport org.hyperskill.hstest.stage.StageTest;\n\
+    import org.hyperskill.hstest.testcase.CheckResult;\nimport org.hyperskill.hstest.testcase.TestCase;\n\
+    \nimport java.net.URI;\nimport java.net.http.*;\nimport java.time.Duration;\n\
+    import java.util.List;\nimport java.util.function.Function;\n\nclass RedirectUriFinder\
+    \ {\n    \n    private Thread thread;\n    \n    volatile CheckResult checkResult\
+    \ = CheckResult.correct();\n    \n    private String fictiveAuthCode;\n    \n\
+    \    RedirectUriFinder(String fictiveAuthCode) {\n        this.fictiveAuthCode\
+    \ = fictiveAuthCode;\n    }\n    \n    void start() {\n        // this message\
+    \ will be ignored, if user program hangs\n        checkResult = CheckResult.wrong(\"\
+    Not found a link with redirect_uri.\");\n        thread = new Thread(() -> {\n\
+    \            String redirectUri = \"\";\n            long searchTime = System.currentTimeMillis();\n\
+    \            \n            while (!Thread.interrupted()) {\n                if\
+    \ (System.currentTimeMillis() - searchTime > 1000 * 9) {\n                   \
+    \ System.out.println(\"Tester: Not found a link with redirect_uri after 9 seconds.\
+    \ Stopping.\");\n                    return;\n                }\n            \
+    \    \n                String out = SystemOutHandler.getDynamicOutput();\n   \
+    \             if (out.contains(\"redirect_uri=\")) {\n                    redirectUri\
+    \ = out.split(\"redirect_uri=\")[1];\n                    if (redirectUri.contains(\"\
+    &\")) {\n                        redirectUri = redirectUri.split(\"&\")[0];\n\
+    \                    }\n                    if (redirectUri.contains(\"\\n\"))\
+    \ {\n                        // \\r \\n or \\r\\n\n                        redirectUri\
+    \ = redirectUri.split(\"\\\\R\")[0];\n                    }\n                \
+    \    break;\n                }\n                \n                try {\n    \
+    \                Thread.sleep(100);\n                } catch (Exception e) {\n\
+    \                    return;\n                }\n            }\n            try\
+    \ {\n                HttpClient client = HttpClient.newBuilder().build();\n  \
+    \              HttpRequest emptyRequest = HttpRequest.newBuilder()\n         \
+    \               .uri(URI.create(redirectUri))\n                        .timeout(Duration.ofMillis(500))\n\
+    \                        .GET()\n                        .build();\n         \
+    \       HttpRequest errorRequest = HttpRequest.newBuilder()\n                \
+    \        .uri(URI.create(redirectUri + \"?error=access_denied\"))\n          \
+    \              .timeout(Duration.ofMillis(500))\n                        .GET()\n\
+    \                        .build();\n                HttpRequest codeRequest =\
+    \ HttpRequest.newBuilder()\n                        .uri(URI.create(redirectUri\
+    \ + \"?code=\" + fictiveAuthCode))\n                        .timeout(Duration.ofMillis(500))\n\
+    \                        .GET()\n                        .build();\n         \
+    \       \n                checkResult = CheckResult.wrong(\"Making request to\
+    \ \" + redirectUri + \" was not finished.\");\n                System.out.println(\"\
+    Tester: making requests to redirect uri: \" + redirectUri);\n                HttpResponse<String>\
+    \ badResponse = client.send(emptyRequest, HttpResponse.BodyHandlers.ofString());\n\
+    \                System.out.println(\"Tester: done request 1: \" + badResponse.body());\n\
+    \                HttpResponse<String> badResponse2 = client.send(errorRequest,\
+    \ HttpResponse.BodyHandlers.ofString());\n                System.out.println(\"\
+    Tester: done request 2: \" + badResponse2.body());\n                HttpResponse<String>\
+    \ goodResponse = client.send(codeRequest, HttpResponse.BodyHandlers.ofString());\n\
+    \                System.out.println(\"Tester: done request 3: \" + goodResponse.body());\n\
+    \                \n                if (!badResponse.body().contains(\"Not found\
+    \ authorization code. Try again.\")\n                        || !badResponse2.body().contains(\"\
+    Not found authorization code. Try again.\")) {\n                    checkResult\
+    \ = CheckResult.wrong(\"You should send to the browser: `Not found authorization\
+    \ code. Try again.` \" +\n                            \"if there is no code.\"\
+    );\n                    return;\n                }\n                \n       \
+    \         if (!goodResponse.body().contains(\"Got the code. Return back to your\
+    \ program.\")) {\n                    checkResult = CheckResult.wrong(\"You should\
+    \ send `Got the code. Return back to your program.` \" +\n                   \
+    \         \"if the query contains the code.\");\n                    return;\n\
+    \                }\n                checkResult = CheckResult.correct();\n   \
+    \         } catch (HttpTimeoutException e) {\n                System.out.println(\"\
+    Tester: Timeout\");\n                // this checkResult will be ignored in most\
+    \ cases (if user program hangs)\n                checkResult = CheckResult.wrong(\"\
+    Not received any response from the server, found in redirect_uri: \"\n       \
+    \                 + redirectUri);\n            } catch (InterruptedException e)\
+    \ {\n                // when the user printed token, but not answered the last\
+    \ request with code.\n                checkResult = CheckResult.wrong(\"Request\
+    \ to \" + redirectUri + \" was interrupted. \" +\n                        \"Make\
+    \ sure, that you give the right feedback in your browser.\");\n            } catch\
+    \ (Exception e) {\n                System.out.println(\"Tester: Error: \" + e.getMessage());\n\
+    \                e.printStackTrace();\n            }\n        });\n        thread.start();\n\
+    \    }\n    \n    void stop() {\n        if (thread != null) {\n            thread.interrupt();\n\
+    \            try {\n                // wait the thread to set a proper checkResult\
+    \ in case of interruption.\n                thread.join();\n            } catch(InterruptedException\
+    \ ignored) {\n            }\n        }\n    }\n}\n\n\npublic class MusicAdvisorTest\
+    \ extends StageTest<Void> {\n    \n    private static final String fictiveAuthCode\
+    \ = \"123123\";\n    private static final String fictiveAccessToken = \"456456\"\
+    ;\n    private static final String fictiveRefreshToken = \"567567\";\n    \n \
+    \   \n    private RedirectUriFinder redirectUriCatcher = new RedirectUriFinder(fictiveAuthCode);\n\
+    \    \n    private int accessServerPort = 45678;\n    private String accessServerUrl\
+    \ = \"http://127.0.0.1:\" + accessServerPort;\n    \n    private String[] arguments\
+    \ = new String[]{\n            \"-access\",\n            accessServerUrl\n   \
+    \ };\n    \n    private String tokenResponse = \"{\" +\n            \"\\\"access_token\\\
+    \":\\\"\" + fictiveAccessToken + \"\\\",\" +\n            \"\\\"token_type\\\"\
+    :\\\"Bearer\\\",\" +\n            \"\\\"expires_in\\\":3600,\" +\n           \
+    \ \"\\\"refresh_token\\\":\" + \"\\\"\" + fictiveRefreshToken + \"\\\",\" +\n\
+    \            \"\\\"scope\\\":\\\"\\\"\" +\n            \"}\";\n    \n    // TODO\
+    \ handle auth code argument to get the token.\n    private WebServerMock accessServer\
+    \ = new WebServerMock(accessServerPort)\n            .setPage(\"/api/token\",\
+    \ tokenResponse);\n    \n    public MusicAdvisorTest() {\n        super(Main.class);\n\
+    \    }\n    \n    @Override\n    public List<TestCase<Void>> generate() {\n  \
+    \      return List.of(\n                new TestCase<Void>()\n               \
+    \         .addArguments(arguments)\n                        .runWith(accessServer)\n\
+    \                        .addInput(1, out -> {\n                            redirectUriCatcher.start();\n\
+    \                            return \"auth\\n\";\n                        })\n\
+    \                        .addInput(1, out -> {\n                            redirectUriCatcher.stop();\n\
+    \                            if (redirectUriCatcher.checkResult != CheckResult.correct())\
+    \ {\n                                return redirectUriCatcher.checkResult;\n\
+    \                            }\n                            if (!out.contains(fictiveAccessToken))\
+    \ {\n                                return CheckResult.wrong(\"Not found correct\
+    \ access token in the result. \" +\n                                        \"\
+    Make sure, that you use the server from the command line arguments to access the\
+    \ token.\");\n                            }\n                            return\
+    \ \"featured\";\n                        })\n                        .addInput(1,\
+    \ out -> {\n                            if (!out.contains(\"---FEATURED---\"))\
+    \ {\n                                return new CheckResult(false,\n         \
+    \                               \"When \\\"featured\\\" was inputted there should\
+    \ be \\\"---FEATURED---\\\" line\");\n                            }\n        \
+    \                    return \"exit\";\n                        }),\n         \
+    \       \n                new TestCase<Void>()\n                        .setInput(\"\
+    new\\nexit\")\n                        .setCheckFunc((reply, v) -> {\n       \
+    \                     if (!reply.strip().startsWith(\"Please, provide access for\
+    \ application.\")) {\n                                return new CheckResult(false,\n\
+    \                                        \"When no access provided you should\
+    \ output \" +\n                                                \"\\\"Please, provide\
+    \ access for application.\\\"\");\n                            }\n           \
+    \                 return CheckResult.correct();\n                        }),\n\
+    \                \n                new TestCase<Void>()\n                    \
+    \    .setInput(\"featured\\nexit\")\n                        .setCheckFunc((reply,\
+    \ v) -> {\n                            if (!reply.strip().startsWith(\"Please,\
+    \ provide access for application.\")) {\n                                return\
+    \ new CheckResult(false,\n                                        \"When no access\
+    \ provided you should output \" +\n                                          \
+    \      \"\\\"Please, provide access for application.\\\"\");\n               \
+    \             }\n                            return CheckResult.correct();\n \
+    \                       })\n        \n        );\n        \n    }\n    \n    @Override\n\
+    \    public CheckResult check(String reply, Void attach) {\n        return CheckResult.correct();\n\
+    \    }\n}\n"
+  learner_created: false
+- name: src/advisor/Main.java
+  visible: true
+  text: |
+    package advisor;
+
+    public class Main {
+        public static void main(String[] args) {
+            System.out.println("Hello World!");
+        }
+    }
+  learner_created: false
+- name: build.gradle
+  visible: true
+  text: |-
+    apply plugin: 'java'
+    apply plugin: 'application'
+
+    group 'advisor'
+    version '1.0-SNAPSHOT'
+
+    sourceCompatibility = 11
+    mainClassName = 'advisor.Main'
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        compile 'com.google.code.gson:gson:+'
+    }
+
+    jar {
+        manifest {
+            attributes 'Main-Class' : 'advisor.Main'
+        }
+        from {
+            configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+        }
+    }
+  learner_created: false
+feedback_link: https://hyperskill.org/projects/62/stages/337/implement
+status: Solved
+record: 3
