@@ -20,7 +20,12 @@ public class Controller {
     private static final String featuredURL = SpotifyData.API_PATH + "v1/browse/featured-playlists";
     static String accessToken = "";
 
-    public static void printAuthCode() throws IOException, InterruptedException {
+    /**
+     * gets the authorization code after a user accepts the process, this function will mutates the @authCode variable which is defined inside this class.
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public static void getAuthCode() throws IOException, InterruptedException {
         HttpServer server = HttpServer.create();
         server.bind(new InetSocketAddress(8080), 0);
         server.start();
@@ -32,7 +37,6 @@ public class Controller {
                     if (query != null && query.contains("code")) {
                         authCode = query.substring(5);
                         result = "Got the code. Return back to your program.";
-                        System.out.println("Auth code: " + authCode);
                     } else {
                         result = "Not found authorization code. Try again.";
                     }
@@ -48,17 +52,11 @@ public class Controller {
         server.stop(10);
     }
 
-    public static String getRequestedData(String requestedFeatureURL) throws IOException, InterruptedException {
-        HttpClient client = HttpClient.newBuilder().build();
-        HttpRequest request = HttpRequest.newBuilder()
-                .header("Authorization", "Bearer " + accessToken)
-                .uri(URI.create(requestedFeatureURL))
-                .GET()
-                .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        return response.body();
-    }
-
+    /**
+     * After the authorization process has succeeded, this function get the access token and mutates the @accessToken variable.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public static void getAccessToken() throws IOException, InterruptedException {
         View.printAccessTokenView();
         HttpRequest requestAccessToken = HttpRequest.newBuilder()
@@ -75,30 +73,53 @@ public class Controller {
         HttpResponse<String> responseWithAccessToken = client.send(requestAccessToken, HttpResponse.BodyHandlers.ofString());
         accessToken = JsonParser.parseString(responseWithAccessToken.body()).getAsJsonObject().get("access_token").getAsString();
     }
+    /**
+     * gets requested data based on URL provided.
+     * @param requestedFeatureURL
+     * @return a string represents the data fetched from the API.
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public static String getRequestedData(String requestedFeatureURL) throws IOException, InterruptedException {
+        HttpClient client = HttpClient.newBuilder().build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .header("Authorization", "Bearer " + accessToken)
+                .uri(URI.create(requestedFeatureURL))
+                .GET()
+                .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        return response.body();
+    }
 
-
+    /**
+     * gets new releases from Spotify
+     * @return a JsonObject contains new releases data.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public static JsonObject getNewReleases() throws IOException, InterruptedException {
         String verboseJson = getRequestedData(releasesURL);
         return JsonParser.parseString(verboseJson).getAsJsonObject().get("albums").getAsJsonObject();
     }
 
-    public static String nextPage(String request, int limit) throws IOException, InterruptedException {
-        if (request.equals("new")) {
-            String data = getRequestedData(releasesURL);
-
-        }
-        return "";
-    }
-
-    public static String previousPage(String request, int limit) {
-        return "";
-    }
-
+    /**
+     * gets available category names on Spotify
+     * @return a JsonObject contains category names data.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public static JsonObject getCategoryNames() throws IOException, InterruptedException {
         var categories = getRequestedData(categoriesURL);
         return JsonParser.parseString(categories).getAsJsonObject().getAsJsonObject().get("categories").getAsJsonObject();
     }
 
+    /**
+     * this is a utility function to get a category ID based on category's name.
+     * @param categoryName name of the category wanted to find the ID.
+     * @return a string with the category's name.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public static String getCategoryIdByCategoryName(String categoryName) throws IOException, InterruptedException {
         var categories = getRequestedData(categoriesURL);
         var items = JsonParser.parseString(categories).getAsJsonObject().get("categories").getAsJsonObject().get("items").getAsJsonArray();
@@ -111,11 +132,24 @@ public class Controller {
         return null;
     }
 
+    /**
+     * gets the features from Spotify's API.
+     * @return a JsonObject which represents features available on Spotify.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public static JsonObject getFeatures() throws IOException, InterruptedException {
         var features = getRequestedData(featuredURL);
         return JsonParser.parseString(features).getAsJsonObject().get("playlists").getAsJsonObject();
     }
 
+    /**
+     * gets playlists by providing a category name
+     * @param categoryName the name of the category wanted to find a playlist
+     * @return a playlist of the provided category's name.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     public static JsonObject getPlaylists(String categoryName) throws IOException, InterruptedException {
         String categoryID = getCategoryIdByCategoryName(categoryName);
         if (categoryID == null) {

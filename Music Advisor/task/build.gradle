@@ -17,9 +17,7 @@ dependencies {
 
 jar {
     manifest {
-        attributes('Main-Class': 'advisor.Main',
-                'Class-Path': configurations.compile.collect { it.getName() }.join(' '),
-        )
+        attributes 'Main-Class' : 'advisor.Main'
     }
     from {
         configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
