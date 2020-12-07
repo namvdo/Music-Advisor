@@ -53,7 +53,7 @@ public class Controller {
     }
 
     /**
-     * After the authorization process has succeeded, this function get the access token and mutates the @accessToken variable.
+     * After the authorization process has succeeded, this function get the access token and update the value of `accessToken` class variable.
      * @throws IOException
      * @throws InterruptedException
      */
