@@ -21,7 +21,7 @@ public class Controller {
     static String accessToken = "";
 
     /**
-     * gets the authorization code after a user accepts the process, this function will mutates the @authCode variable which is defined inside this class.
+     * gets the authorization code after a user accepts the process, this function will change the value of the `authCode` class variable.
      * @throws IOException
      * @throws InterruptedException
      */
